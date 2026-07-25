@@ -77,6 +77,34 @@ function UI.Init(plugin)
     repoBox.ClearTextOnFocus = false
     repoBox.Text = Config.GetRepo(plugin)
     repoBox.Parent = settingsGui
+
+    local autoSyncFrame = Instance.new("Frame")
+    autoSyncFrame.Size = UDim2.new(0.9, 0, 0, 30)
+    autoSyncFrame.BackgroundTransparency = 1
+    autoSyncFrame.Parent = settingsGui
+
+    local autoSyncLabel = Instance.new("TextLabel")
+    autoSyncLabel.Size = UDim2.new(0.7, 0, 1, 0)
+    autoSyncLabel.BackgroundTransparency = 1
+    autoSyncLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    autoSyncLabel.TextXAlignment = Enum.TextXAlignment.Left
+    autoSyncLabel.Text = "Enable Auto-Sync (Beta):"
+    autoSyncLabel.Parent = autoSyncFrame
+
+    local autoSyncButton = Instance.new("TextButton")
+    autoSyncButton.Size = UDim2.new(0.3, 0, 1, 0)
+    autoSyncButton.Position = UDim2.new(0.7, 0, 0, 0)
+    autoSyncButton.BackgroundColor3 = Config.GetAutoSync(plugin) and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(80, 80, 80)
+    autoSyncButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    autoSyncButton.Text = Config.GetAutoSync(plugin) and "ON" or "OFF"
+    autoSyncButton.Parent = autoSyncFrame
+
+    autoSyncButton.MouseButton1Click:Connect(function()
+        local newState = not Config.GetAutoSync(plugin)
+        Config.SetAutoSync(plugin, newState)
+        autoSyncButton.Text = newState and "ON" or "OFF"
+        autoSyncButton.BackgroundColor3 = newState and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(80, 80, 80)
+    end)
     
     local saveButton = Instance.new("TextButton")
     saveButton.Size = UDim2.new(0.9, 0, 0, 35)

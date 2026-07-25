@@ -29,7 +29,7 @@ local function getObjectPath(obj)
     return table.concat(parts, "/")
 end
 
-function SyncManager.Push(token, ownerRepo, customBranch)
+function SyncManager.Push(token, ownerRepo, customBranch, pushAll)
     if not token or token == "" then
         return false, "GitHub Token is not set."
     end
@@ -37,8 +37,18 @@ function SyncManager.Push(token, ownerRepo, customBranch)
         return false, "Repository path (owner/repo) is not set."
     end
     
-    local selected = Selection:Get()
-    if #selected == 0 then
+    local toProcess = {}
+    if pushAll then
+        table.insert(toProcess, game:GetService("Workspace"))
+        table.insert(toProcess, game:GetService("ServerScriptService"))
+        table.insert(toProcess, game:GetService("ReplicatedStorage"))
+        table.insert(toProcess, game:GetService("ServerStorage"))
+        table.insert(toProcess, game:GetService("StarterPlayer"))
+    else
+        toProcess = Selection:Get()
+    end
+    
+    if #toProcess == 0 then
         return false, "No scripts or objects selected in Roblox Studio. Please select scripts or parent folders (holding Ctrl)."
     end
     
@@ -70,14 +80,14 @@ function SyncManager.Push(token, ownerRepo, customBranch)
             else
                 table.insert(errors, string.format("%s: %s", obj.Name, tostring(err)))
             end
-        elseif obj:IsA("Folder") or obj:IsA("Model") or obj:IsA("Workspace") or obj:IsA("DataModelHolder") then
+        elseif obj:IsA("Folder") or obj:IsA("Model") or obj:IsA("Workspace") or obj:IsA("DataModelHolder") or obj:IsA("Service") then
             for _, child in ipairs(obj:GetChildren()) do
                 processObject(child)
             end
         end
     end
     
-    for _, item in ipairs(selected) do
+    for _, item in ipairs(toProcess) do
         processObject(item)
     end
     
@@ -165,8 +175,8 @@ function SyncManager.Pull(token, ownerRepo, customBranch)
         }
         
         local function getOrCreateFolder(pathParts)
-            local currentParent = workspace
-            local currentPathKey = "Workspace"
+            local currentParent = game
+            local currentPathKey = ""
             
             local startIndex = 1
             if #pathParts > 0 and pathParts[1] == placeName then
@@ -175,24 +185,24 @@ function SyncManager.Pull(token, ownerRepo, customBranch)
             
             if #pathParts >= startIndex then
                 local serviceName = pathParts[startIndex]
-                if serviceName == "Workspace" then
+                local success, service = pcall(function() return game:GetService(serviceName) end)
+                if success and service then
+                    currentParent = service
+                    currentPathKey = serviceName
                     startIndex = startIndex + 1
-                elseif serviceName == "ServerScriptService" or serviceName == "ReplicatedStorage" or serviceName == "ServerStorage" or serviceName == "StarterPlayer" then
-                    local serviceFolder = workspace:FindFirstChild(serviceName)
-                    if not serviceFolder then
-                        serviceFolder = Instance.new("Folder")
-                        serviceFolder.Name = serviceName
-                        serviceFolder.Parent = workspace
-                    end
-                    currentParent = serviceFolder
-                    currentPathKey = "Workspace/" .. serviceName
-                    startIndex = startIndex + 1
+                else
+                    -- If it's not a service, start from Workspace as default
+                    currentParent = game:GetService("Workspace")
+                    currentPathKey = "Workspace"
                 end
+            else
+                currentParent = game:GetService("Workspace")
+                currentPathKey = "Workspace"
             end
             
             for i = startIndex, #pathParts - 1 do
                 local folderName = pathParts[i]
-                currentPathKey = currentPathKey .. "/" .. folderName
+                currentPathKey = (currentPathKey == "" and "" or currentPathKey .. "/") .. folderName
                 local existing = foldersCache[currentPathKey]
                 if not existing then
                     existing = currentParent:FindFirstChild(folderName)

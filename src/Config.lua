@@ -3,6 +3,7 @@ local Config = {}
 local TOKEN_KEY = "GitHubSync_Token"
 local REPO_KEY = "GitHubSync_Repo"
 local BRANCH_KEY = "GitHubSync_Branch"
+local AUTOSYNC_KEY = "GitHubSync_AutoSync"
 
 function Config.GetToken(pluginInstance)
     if not pluginInstance then return "" end
@@ -46,6 +47,21 @@ function Config.SetBranch(pluginInstance, branch)
     if not pluginInstance then return end
     pcall(function()
         pluginInstance:SetSetting(BRANCH_KEY, branch)
+    end)
+end
+
+function Config.GetAutoSync(pluginInstance)
+    if not pluginInstance then return false end
+    local success, val = pcall(function()
+        return pluginInstance:GetSetting(AUTOSYNC_KEY)
+    end)
+    return success and (val == true) or false
+end
+
+function Config.SetAutoSync(pluginInstance, enabled)
+    if not pluginInstance then return end
+    pcall(function()
+        pluginInstance:SetSetting(AUTOSYNC_KEY, enabled)
     end)
 end
 

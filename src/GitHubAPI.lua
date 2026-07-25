@@ -126,6 +126,15 @@ function GitHubAPI.GetBranches(token, ownerRepo)
     return true, branches
 end
 
+function GitHubAPI.GetLatestCommitSha(token, ownerRepo, branch)
+    if not branch or branch == "" then
+        local ok, def = GitHubAPI.GetDefaultBranch(token, ownerRepo)
+        branch = ok and def or "main"
+    end
+    local url = string.format("https://api.github.com/repos/%s/commits/%s", ownerRepo, GitHubAPI.UrlEncode(branch))
+    return GitHubAPI.MakeRequest(token, url, "GET")
+end
+
 function GitHubAPI.GetRepoTree(token, ownerRepo, branch)
     if not branch or branch == "" then
         local ok, def = GitHubAPI.GetDefaultBranch(token, ownerRepo)
