@@ -3,7 +3,7 @@
   "tree": {
     "$className": "Folder",
     "GitHubSyncPlugin": {
-      "$path": "src"
+      "$path": "GitHubSyncPlugin.server.lua"
     }
   }
 }

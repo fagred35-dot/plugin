@@ -29,15 +29,15 @@
 
 ## 🚀 Установка
 
-1. **С использованием Rojo:**
+1. **Самый простой способ:**
+   Просто скачайте файл `GitHubSyncPlugin.server.lua` и поместите его в папку плагинов Roblox Studio (`%AppData%\Local\Roblox\Plugins`).
+
+2. **С использованием Rojo:**
    Убедитесь, что у вас установлен [Rojo](https://rojo.space/), затем выполните:
    ```bash
    rojo build -o GitHubSyncPlugin.rbxmx
    ```
-   Импортируйте полученный `.rbxmx` файл в Roblox Studio (или откройте папку плагинов Roblox Studio и поместите туда плагин).
-
-2. **Ручная установка:**
-   Создайте папку плагина в каталоге плагинов Roblox Studio и скопируйте в неё папку `src` (переименовав её в `GitHubSyncPlugin.server.lua` или настроив `init.server.lua`).
+   Импортируйте полученный `.rbxmx` файл в Roblox Studio.
 
 ---
 
@@ -45,9 +45,15 @@
 
 ### 1. Настройка
 1. В Roblox Studio нажмите на иконку настроек плагина на панели **GitHub Sync**.
-2. Введите ваш **GitHub Personal Access Token (PAT)** (с правами доступа к репозиториям, например `repo` scope).
-3. Введите путь к репозиторию в формате `owner/repo` (например, `username/my-roblox-game`).
-4. Нажмите **Save Settings**. Данные сохраняются автоматически через `plugin:SetSetting()`.
+2. Введите ваш **GitHub Personal Access Token (PAT)**.
+3. Введите путь к репозиторию в формате `owner/repo`.
+4. Включите **Auto-Sync**, если хотите автоматическую синхронизацию.
+5. Нажмите **Save Settings**.
+
+---
+
+## 🛠️ Структура проекта
+Теперь проект состоит из одного файла `GitHubSyncPlugin.server.lua`, что упрощает его поддержку и установку.
 
 ### 2. Repository Viewer — главное окно плагина
 На панели инструментов Roblox Studio осталось всего две кнопки: **Settings** и **Repo Viewer**.
