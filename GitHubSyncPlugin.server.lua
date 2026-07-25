@@ -1,7 +1,6 @@
 -- ============================================================================
--- Roblox GitHub Sync Plugin (All-in-One Single File Version)
+-- Roblox GitHub Sync Plugin (All-in-One Single File Version with Branches & Selective Pull)
 -- Copy this entire script into a Script or ModuleScript in Roblox Studio
--- or use with Rojo / init.server.lua
 -- ============================================================================
 
 local pluginInstance = plugin
@@ -54,6 +53,7 @@ end
 local Config = {}
 local TOKEN_KEY = "GitHubSync_Token"
 local REPO_KEY = "GitHubSync_Repo"
+local BRANCH_KEY = "GitHubSync_Branch"
 
 function Config.GetToken(plugin)
     local success, val = pcall(function()
@@ -78,6 +78,19 @@ end
 function Config.SetRepo(plugin, repo)
     pcall(function()
         plugin:SetSetting(REPO_KEY, repo)
+    end)
+end
+
+function Config.GetBranch(plugin)
+    local success, val = pcall(function()
+        return plugin:GetSetting(BRANCH_KEY)
+    end)
+    return success and (val or "") or ""
+end
+
+function Config.SetBranch(plugin, branch)
+    pcall(function()
+        plugin:SetSetting(BRANCH_KEY, branch)
     end)
 end
 
@@ -187,13 +200,41 @@ function GitHubAPI.GetDefaultBranch(token, ownerRepo)
     return true, data.default_branch or "main"
 end
 
+function GitHubAPI.GetBranches(token, ownerRepo)
+    local url = string.format("https://api.github.com/repos/%s/branches", ownerRepo)
+    local success, data = GitHubAPI.MakeRequest(token, url, "GET")
+    if not success or type(data) ~= "table" then
+        return false, data or "Failed to fetch branches"
+    end
+    
+    local branches = {}
+    for _, branchObj in ipairs(data) do
+        if branchObj and branchObj.name then
+            table.insert(branches, branchObj.name)
+        end
+    end
+    if #branches == 0 then
+        -- fallback to default branch
+        local ok, def = GitHubAPI.GetDefaultBranch(token, ownerRepo)
+        if ok then
+            table.insert(branches, def)
+        else
+            table.insert(branches, "main")
+        end
+    end
+    return true, branches
+end
+
 function GitHubAPI.GetRepoTree(token, ownerRepo, branch)
     local url = string.format("https://api.github.com/repos/%s/git/trees/%s?recursive=1", ownerRepo, branch)
     return GitHubAPI.MakeRequest(token, url, "GET")
 end
 
-function GitHubAPI.GetFileSha(token, ownerRepo, path)
+function GitHubAPI.GetFileSha(token, ownerRepo, path, branch)
     local url = string.format("https://api.github.com/repos/%s/contents/%s", ownerRepo, path)
+    if branch and branch ~= "" then
+        url = url .. "?ref=" .. branch
+    end
     local success, data = GitHubAPI.MakeRequest(token, url, "GET")
     if success and type(data) == "table" and data.sha then
         return data.sha
@@ -201,9 +242,9 @@ function GitHubAPI.GetFileSha(token, ownerRepo, path)
     return nil
 end
 
-function GitHubAPI.PutFile(token, ownerRepo, path, content, message)
+function GitHubAPI.PutFile(token, ownerRepo, path, content, message, branch)
     local url = string.format("https://api.github.com/repos/%s/contents/%s", ownerRepo, path)
-    local sha = GitHubAPI.GetFileSha(token, ownerRepo, path)
+    local sha = GitHubAPI.GetFileSha(token, ownerRepo, path, branch)
     
     local encodedContent = Base64.encode(content)
     local body = {
@@ -213,12 +254,18 @@ function GitHubAPI.PutFile(token, ownerRepo, path, content, message)
     if sha then
         body.sha = sha
     end
+    if branch and branch ~= "" then
+        body.branch = branch
+    end
     
     return GitHubAPI.MakeRequest(token, url, "PUT", body)
 end
 
-function GitHubAPI.GetFileContent(token, ownerRepo, path)
+function GitHubAPI.GetFileContent(token, ownerRepo, path, branch)
     local url = string.format("https://api.github.com/repos/%s/contents/%s", ownerRepo, path)
+    if branch and branch ~= "" then
+        url = url .. "?ref=" .. branch
+    end
     local success, data = GitHubAPI.MakeRequest(token, url, "GET")
     if success and type(data) == "table" and data.content then
         local decoded = Base64.decode(data.content)
@@ -259,7 +306,7 @@ local function getObjectPath(obj)
     return table.concat(parts, "/")
 end
 
-function SyncManager.Push(token, ownerRepo)
+function SyncManager.Push(token, ownerRepo, customBranch)
     if not token or token == "" then
         local err = "GitHub Token is not set in settings."
         warn("[GitHubSync Error] " .. err)
@@ -278,8 +325,11 @@ function SyncManager.Push(token, ownerRepo)
         return false, err
     end
     
-    local successBranch, branchOrErr = GitHubAPI.GetDefaultBranch(token, ownerRepo)
-    local branch = successBranch and branchOrErr or "main"
+    local branch = customBranch
+    if not branch or branch == "" then
+        local successBranch, branchOrErr = GitHubAPI.GetDefaultBranch(token, ownerRepo)
+        branch = successBranch and branchOrErr or "main"
+    end
     
     local placeName = getPlaceName()
     local pushedCount = 0
@@ -294,7 +344,7 @@ function SyncManager.Push(token, ownerRepo)
                 local remotePath = string.format("%s/%s.lua", placeName, objPath)
                 local msg = string.format("Push %s (%s)", obj.Name, className)
                 
-                local successPut, putErr = GitHubAPI.PutFile(token, ownerRepo, remotePath, fileContent, msg)
+                local successPut, putErr = GitHubAPI.PutFile(token, ownerRepo, remotePath, fileContent, msg, branch)
                 if successPut then
                     pushedCount = pushedCount + 1
                 else
@@ -321,14 +371,14 @@ function SyncManager.Push(token, ownerRepo)
     elseif #errors > 0 then
         local fullErr = "Pushed with errors:\n" .. table.concat(errors, "\n")
         warn("[GitHubSync Warning] " .. fullErr)
-        return true, string.format("Pushed %d script(s) with %d error(s). Check console.", pushedCount, #errors)
+        return true, string.format("Pushed %d script(s) with %d error(s) to branch '%s'. Check console.", pushedCount, #errors, branch)
     else
-        print(string.format("[GitHubSync] Successfully pushed %d script(s) to %s/%s!", pushedCount, ownerRepo, placeName))
-        return true, string.format("Successfully pushed %d script(s)!", pushedCount)
+        print(string.format("[GitHubSync] Successfully pushed %d script(s) to %s/%s (branch: %s)!", pushedCount, ownerRepo, placeName, branch))
+        return true, string.format("Successfully pushed %d script(s) to branch '%s'!", pushedCount, branch)
     end
 end
 
-function SyncManager.Pull(token, ownerRepo)
+function SyncManager.Pull(token, ownerRepo, customBranch)
     if not token or token == "" then
         local err = "GitHub Token is not set in settings."
         warn("[GitHubSync Error] " .. err)
@@ -340,19 +390,21 @@ function SyncManager.Pull(token, ownerRepo)
         return false, err
     end
     
-    local selected = Selection:Get()
-    
-    local successBranch, branchOrErr = GitHubAPI.GetDefaultBranch(token, ownerRepo)
-    local branch = successBranch and branchOrErr or "main"
+    local branch = customBranch
+    if not branch or branch == "" then
+        local successBranch, branchOrErr = GitHubAPI.GetDefaultBranch(token, ownerRepo)
+        branch = successBranch and branchOrErr or "main"
+    end
     
     local successTree, treeData = GitHubAPI.GetRepoTree(token, ownerRepo, branch)
     if not successTree or not treeData or not treeData.tree then
-        local err = "Failed to fetch repository tree: " .. tostring(treeData)
+        local err = "Failed to fetch repository tree for branch '" .. branch .. "': " .. tostring(treeData)
         warn("[GitHubSync Error] " .. err)
         return false, err
     end
     
     local placeName = getPlaceName()
+    local selected = Selection:Get()
     
     if #selected > 0 then
         local updatedCount = 0
@@ -363,7 +415,7 @@ function SyncManager.Pull(token, ownerRepo)
                 local objPath = getObjectPath(selObj)
                 local remotePath = string.format("%s/%s.lua", placeName, objPath)
                 
-                local successContent, content = GitHubAPI.GetFileContent(token, ownerRepo, remotePath)
+                local successContent, content = GitHubAPI.GetFileContent(token, ownerRepo, remotePath, branch)
                 if successContent then
                     local _, cleanSource = Serializer.Deserialize(content)
                     selObj.Source = cleanSource
@@ -372,7 +424,7 @@ function SyncManager.Pull(token, ownerRepo)
                     local found = false
                     for _, node in ipairs(treeData.tree) do
                         if node.type == "blob" and (node.path:match("/" + selObj.Name + "%.lua$") or node.path:match("/" + selObj.Name + "%.luau$")) then
-                            local sCont, cnt = GitHubAPI.GetFileContent(token, ownerRepo, node.path)
+                            local sCont, cnt = GitHubAPI.GetFileContent(token, ownerRepo, node.path, branch)
                             if sCont then
                                 local _, cleanSource = Serializer.Deserialize(cnt)
                                 selObj.Source = cleanSource
@@ -394,8 +446,8 @@ function SyncManager.Pull(token, ownerRepo)
             warn("[GitHubSync Error] " .. fullErr)
             return false, fullErr
         else
-            print(string.format("[GitHubSync] Successfully updated %d script(s) via Selective Pull.", updatedCount))
-            return true, string.format("Successfully updated %d script(s).", updatedCount)
+            print(string.format("[GitHubSync] Successfully updated %d script(s) via Selective Pull from branch '%s'.", updatedCount, branch))
+            return true, string.format("Successfully updated %d script(s) from branch '%s'.", updatedCount, branch)
         end
     else
         local importedCount = 0
@@ -462,7 +514,7 @@ function SyncManager.Pull(token, ownerRepo)
                     
                     local parentFolder = getOrCreateFolder(parts)
                     
-                    local successContent, content = GitHubAPI.GetFileContent(token, ownerRepo, node.path)
+                    local successContent, content = GitHubAPI.GetFileContent(token, ownerRepo, node.path, branch)
                     if successContent then
                         local scriptType, cleanSource = Serializer.Deserialize(content)
                         
@@ -491,8 +543,8 @@ function SyncManager.Pull(token, ownerRepo)
             warn("[GitHubSync Error] " .. fullErr)
             return false, fullErr
         else
-            print(string.format("[GitHubSync] Successfully pulled and imported %d file(s) into Workspace!", importedCount))
-            return true, string.format("Successfully pulled %d file(s)!", importedCount)
+            print(string.format("[GitHubSync] Successfully pulled and imported %d file(s) into Workspace from branch '%s'!", importedCount, branch))
+            return true, string.format("Successfully pulled %d file(s) from '%s'!", importedCount, branch)
         end
     end
 end
@@ -511,33 +563,40 @@ local settingsWidgetInfo = DockWidgetPluginGuiInfo.new(
     Enum.InitialDockState.Float,
     false,
     false,
-    350, 200,
-    300, 150
+    380, 280,
+    300, 200
 )
 local settingsWidget = pluginInstance:CreateDockWidgetPluginGui("GitHubSyncSettings", settingsWidgetInfo)
-settingsWidget.Title = "GitHub Sync - Settings"
+settingsWidget.Title = "GitHub Sync - Settings & Branches"
 
 local viewerWidgetInfo = DockWidgetPluginGuiInfo.new(
     Enum.InitialDockState.Float,
     false,
     false,
-    500, 400,
+    550, 450,
     400, 300
 )
 local viewerWidget = pluginInstance:CreateDockWidgetPluginGui("GitHubSyncViewer", viewerWidgetInfo)
-viewerWidget.Title = "GitHub Repository Viewer"
+viewerWidget.Title = "GitHub Repository Viewer & Selective Pull"
 
 -- Settings GUI
-local settingsGui = Instance.new("Frame")
+local settingsGui = Instance.new("ScrollingFrame")
 settingsGui.Size = UDim2.new(1, 0, 1, 0)
 settingsGui.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+settingsGui.CanvasSize = UDim2.new(0, 0, 0, 320)
+settingsGui.AutomaticCanvasSize = Enum.AutomaticSize.Y
 settingsGui.Parent = settingsWidget
 
 local listLayout = Instance.new("UIListLayout")
 listLayout.Padding = UDim.new(0, 10)
 listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-listLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+listLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 listLayout.Parent = settingsGui
+
+local padding = Instance.new("UIPadding")
+padding.PaddingTop = UDim.new(0, 15)
+padding.PaddingBottom = UDim.new(0, 15)
+padding.Parent = settingsGui
 
 local tokenLabel = Instance.new("TextLabel")
 tokenLabel.Size = UDim2.new(0.9, 0, 0, 25)
@@ -573,8 +632,25 @@ repoBox.ClearTextOnFocus = false
 repoBox.Text = Config.GetRepo(pluginInstance)
 repoBox.Parent = settingsGui
 
+local branchLabel = Instance.new("TextLabel")
+branchLabel.Size = UDim2.new(0.9, 0, 0, 25)
+branchLabel.BackgroundTransparency = 1
+branchLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+branchLabel.TextXAlignment = Enum.TextXAlignment.Left
+branchLabel.Text = "Target Branch (leave empty for default):"
+branchLabel.Parent = settingsGui
+
+local branchBox = Instance.new("TextBox")
+branchBox.Size = UDim2.new(0.9, 0, 0, 35)
+branchBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+branchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+branchBox.TextSize = 14
+branchBox.ClearTextOnFocus = false
+branchBox.Text = Config.GetBranch(pluginInstance)
+branchBox.Parent = settingsGui
+
 local saveButton = Instance.new("TextButton")
-saveButton.Size = UDim2.new(0.9, 0, 0, 35)
+saveButton.Size = UDim2.new(0.9, 0, 0, 38)
 saveButton.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
 saveButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 saveButton.TextSize = 16
@@ -585,6 +661,7 @@ saveButton.Parent = settingsGui
 saveButton.MouseButton1Click:Connect(function()
     Config.SetToken(pluginInstance, tokenBox.Text)
     Config.SetRepo(pluginInstance, repoBox.Text)
+    Config.SetBranch(pluginInstance, branchBox.Text)
     saveButton.Text = "Saved!"
     print("[GitHubSync] Settings saved successfully.")
     task.wait(1.5)
@@ -598,42 +675,88 @@ viewerGui.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 viewerGui.Parent = viewerWidget
 
 local viewerTopBar = Instance.new("Frame")
-viewerTopBar.Size = UDim2.new(1, 0, 0, 40)
+viewerTopBar.Size = UDim2.new(1, 0, 0, 50)
 viewerTopBar.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 viewerTopBar.BorderSizePixel = 0
 viewerTopBar.Parent = viewerGui
 
 local refreshButton = Instance.new("TextButton")
-refreshButton.Size = UDim2.new(0, 120, 0, 30)
-refreshButton.Position = UDim2.new(0, 10, 0, 5)
+refreshButton.Size = UDim2.new(0, 100, 0, 34)
+refreshButton.Position = UDim2.new(0, 10, 0, 8)
 refreshButton.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
 refreshButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 refreshButton.Font = Enum.Font.SourceSansBold
-refreshButton.TextSize = 14
-refreshButton.Text = "Refresh Viewer"
+refreshButton.TextSize = 13
+refreshButton.Text = "Refresh"
 refreshButton.Parent = viewerTopBar
 
+local branchSelectLabel = Instance.new("TextLabel")
+branchSelectLabel.Size = UDim2.new(0, 50, 0, 34)
+branchSelectLabel.Position = UDim2.new(0, 120, 0, 8)
+branchSelectLabel.BackgroundTransparency = 1
+branchSelectLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+branchSelectLabel.TextSize = 13
+branchSelectLabel.Text = "Branch:"
+branchSelectLabel.Parent = viewerTopBar
+
+local branchDropdownButton = Instance.new("TextButton")
+branchDropdownButton.Size = UDim2.new(0, 130, 0, 34)
+branchDropdownButton.Position = UDim2.new(0, 175, 0, 8)
+branchDropdownButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+branchDropdownButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+branchDropdownButton.Font = Enum.Font.SourceSansBold
+branchDropdownButton.TextSize = 13
+branchDropdownButton.Text = "Select Branch ▼"
+branchDropdownButton.Parent = viewerTopBar
+
+local pullSelectedButton = Instance.new("TextButton")
+pullSelectedButton.Size = UDim2.new(0, 120, 0, 34)
+pullSelectedButton.Position = UDim2.new(1, -130, 0, 8)
+pullSelectedButton.BackgroundColor3 = Color3.fromRGB(40, 180, 80)
+pullSelectedButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+pullSelectedButton.Font = Enum.Font.SourceSansBold
+pullSelectedButton.TextSize = 13
+pullSelectedButton.Text = "Pull Selected"
+pullSelectedButton.Parent = viewerTopBar
+
 local statusLabel = Instance.new("TextLabel")
-statusLabel.Size = UDim2.new(1, -140, 1, 0)
-statusLabel.Position = UDim2.new(0, 140, 0, 0)
+statusLabel.Size = UDim2.new(1, -20, 0, 22)
+statusLabel.Position = UDim2.new(0, 10, 0, 52)
 statusLabel.BackgroundTransparency = 1
-statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-statusLabel.TextSize = 14
+statusLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+statusLabel.TextSize = 12
 statusLabel.TextXAlignment = Enum.TextXAlignment.Left
-statusLabel.Text = "Click Refresh to load repository files."
-statusLabel.Parent = viewerTopBar
+statusLabel.Text = "Click Refresh to load branches and files."
+statusLabel.Parent = viewerGui
+
+-- Branches popup menu
+local branchesMenu = Instance.new("ScrollingFrame")
+branchesMenu.Size = UDim2.new(0, 160, 0, 150)
+branchesMenu.Position = UDim2.new(0, 175, 0, 45)
+branchesMenu.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+branchesMenu.BorderSizePixel = 1
+branchesMenu.Visible = false
+branchesMenu.ZIndex = 10
+branchesMenu.Parent = viewerGui
+
+local branchesLayout = Instance.new("UIListLayout")
+branchesLayout.Parent = branchesMenu
 
 local scrollingFrame = Instance.new("ScrollingFrame")
-scrollingFrame.Size = UDim2.new(1, 0, 1, -40)
-scrollingFrame.Position = UDim2.new(0, 0, 0, 40)
+scrollingFrame.Size = UDim2.new(1, 0, 1, -78)
+scrollingFrame.Position = UDim2.new(0, 0, 0, 78)
 scrollingFrame.BackgroundTransparency = 1
 scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 scrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 scrollingFrame.Parent = viewerGui
 
 local scrollerLayout = Instance.new("UIListLayout")
-scrollerLayout.Padding = UDim.new(0, 4)
+scrollerLayout.Padding = UDim.new(0, 2)
 scrollerLayout.Parent = scrollingFrame
+
+local currentLoadedBranch = "main"
+local repoFilesData = {}
+local selectedFilesMap = {}
 
 local function refreshViewer()
     local token = Config.GetToken(pluginInstance)
@@ -645,19 +768,75 @@ local function refreshViewer()
         return
     end
     
-    statusLabel.Text = "Fetching repository tree..."
-    for _, child in ipairs(scrollingFrame:GetChildren()) do
-        if child:IsA("TextLabel") then
+    statusLabel.Text = "Fetching branches and repository tree..."
+    
+    -- 1. Get Branches
+    local successBranches, branchesList = GitHubAPI.GetBranches(token, repo)
+    if not successBranches then
+        statusLabel.Text = "Failed to fetch branches: " .. tostring(branchesList)
+        warn("[GitHubSync Error] Failed to fetch branches: " .. tostring(branchesList))
+        return
+    end
+    
+    -- Pick default or saved branch
+    local savedBranch = Config.GetBranch(pluginInstance)
+    local foundSaved = false
+    if savedBranch ~= "" then
+        for _, bName in ipairs(branchesList) do
+            if bName == savedBranch then
+                foundSaved = true
+                break
+            end
+        end
+    end
+    
+    if not foundSaved then
+        local okDef, defBranch = GitHubAPI.GetDefaultBranch(token, repo)
+        currentLoadedBranch = okDef and defBranch or branchesList[1]
+    else
+        currentLoadedBranch = savedBranch
+    end
+    
+    branchDropdownButton.Text = currentLoadedBranch .. " ▼"
+    
+    -- Populate branches popup
+    for _, child in ipairs(branchesMenu:GetChildren()) do
+        if child:IsA("TextButton") then
             child:Destroy()
         end
     end
     
-    local successBranch, branchOrErr = GitHubAPI.GetDefaultBranch(token, repo)
-    local branch = successBranch and branchOrErr or "main"
+    for _, bName in ipairs(branchesList) do
+        local bBtn = Instance.new("TextButton")
+        bBtn.Size = UDim2.new(1, 0, 0, 28)
+        bBtn.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+        bBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        bBtn.TextSize = 13
+        bBtn.Text = " " .. bName
+        bBtn.TextXAlignment = Enum.TextXAlignment.Left
+        bBtn.ZIndex = 11
+        bBtn.Parent = branchesMenu
+        
+        bBtn.MouseButton1Click:Connect(function()
+            currentLoadedBranch = bName
+            branchDropdownButton.Text = bName .. " ▼"
+            branchesMenu.Visible = false
+            refreshViewer()
+        end)
+    end
     
-    local successTree, treeData = GitHubAPI.GetRepoTree(token, repo, branch)
+    -- 2. Get Tree for branch
+    for _, child in ipairs(scrollingFrame:GetChildren()) do
+        if child:IsA("GuiObject") then
+            child:Destroy()
+        end
+    end
+    repoFilesData = {}
+    selectedFilesMap = {}
+    
+    local successTree, treeData = GitHubAPI.GetRepoTree(token, repo, currentLoadedBranch)
     if not successTree or not treeData or not treeData.tree then
-        local err = "Failed to fetch tree: " .. tostring(treeData)
+        local err = "Failed to fetch tree for branch '" .. currentLoadedBranch .. "': " .. tostring(treeData)
         statusLabel.Text = err
         warn("[GitHubSync Error] " .. err)
         return
@@ -667,22 +846,141 @@ local function refreshViewer()
     for _, node in ipairs(treeData.tree) do
         if node.type == "blob" then
             count = count + 1
-            local itemLabel = Instance.new("TextLabel")
-            itemLabel.Size = UDim2.new(1, -20, 0, 24)
-            itemLabel.BackgroundTransparency = 1
-            itemLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
-            itemLabel.TextSize = 13
-            itemLabel.TextXAlignment = Enum.TextXAlignment.Left
-            itemLabel.Text = "  " .. node.path
-            itemLabel.Parent = scrollingFrame
+            table.insert(repoFilesData, node.path)
+            
+            local itemFrame = Instance.new("Frame")
+            itemFrame.Size = UDim2.new(1, -10, 0, 26)
+            itemFrame.BackgroundTransparency = 1
+            itemFrame.Parent = scrollingFrame
+            
+            local chkBtn = Instance.new("TextButton")
+            chkBtn.Size = UDim2.new(0, 20, 0, 20)
+            chkBtn.Position = UDim2.new(0, 5, 0, 3)
+            chkBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            chkBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            chkBtn.TextSize = 12
+            chkBtn.Font = Enum.Font.SourceSansBold
+            chkBtn.Text = ""
+            chkBtn.Parent = itemFrame
+            
+            local pathLabel = Instance.new("TextLabel")
+            pathLabel.Size = UDim2.new(1, -35, 1, 0)
+            pathLabel.Position = UDim2.new(0, 30, 0, 0)
+            pathLabel.BackgroundTransparency = 1
+            pathLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+            pathLabel.TextSize = 13
+            pathLabel.TextXAlignment = Enum.TextXAlignment.Left
+            pathLabel.Text = node.path
+            pathLabel.Parent = itemFrame
+            
+            local isSelected = false
+            chkBtn.MouseButton1Click:Connect(function()
+                isSelected = not isSelected
+                selectedFilesMap[node.path] = isSelected
+                chkBtn.Text = isSelected and "✓" or ""
+                chkBtn.BackgroundColor3 = isSelected and Color3.fromRGB(0, 162, 255) or Color3.fromRGB(60, 60, 60)
+            end)
+            
+            pathLabel.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    isSelected = not isSelected
+                    selectedFilesMap[node.path] = isSelected
+                    chkBtn.Text = isSelected and "✓" or ""
+                    chkBtn.BackgroundColor3 = isSelected and Color3.fromRGB(0, 162, 255) or Color3.fromRGB(60, 60, 60)
+                end
+            end)
         end
     end
     
-    statusLabel.Text = string.format("Loaded %d file(s) from branch '%s'.", count, branch)
-    print(string.format("[GitHubSync] Viewer loaded %d files from repository %s.", count, repo))
+    statusLabel.Text = string.format("Branch: [%s] | Loaded %d file(s). Select files to pull.", currentLoadedBranch, count)
+    print(string.format("[GitHubSync] Loaded branch '%s' with %d files.", currentLoadedBranch, count))
 end
 
-refreshButton.MouseButton1Click:Connect(refreshViewer)
+branchDropdownButton.MouseButton1Click:Connect(function()
+    branchesMenu.Visible = not branchesMenu.Visible
+end)
+
+refreshButton.MouseButton1Click:Connect(function()
+    branchesMenu.Visible = false
+    refreshViewer()
+end)
+
+pullSelectedButton.MouseButton1Click:Connect(function()
+    local token = Config.GetToken(pluginInstance)
+    local repo = Config.GetRepo(pluginInstance)
+    
+    local pathsToPull = {}
+    for path, isSel in pairs(selectedFilesMap) do
+        if isSel then
+            table.insert(pathsToPull, path)
+        end
+    end
+    
+    if #pathsToPull == 0 then
+        warn("[GitHubSync Warning] No files selected in Repository Viewer for Selective Pull.")
+        statusLabel.Text = "Error: No files selected to pull!"
+        return
+    end
+    
+    statusLabel.Text = string.format("Pulling %d selected file(s) from '%s'...", #pathsToPull, currentLoadedBranch)
+    print(string.format("[GitHubSync] Pulling %d selected files from branch '%s'...", #pathsToPull, currentLoadedBranch))
+    
+    local workspace = Workspace
+    local pulledCount = 0
+    local errors = {}
+    
+    local function getOrCreateFolderByPath(parts)
+        local currentParent = workspace
+        for i = 1, #parts - 1 do
+            local folderName = parts[i]
+            local existing = currentParent:FindFirstChild(folderName)
+            if not existing or not existing:IsA("Folder") then
+                existing = Instance.new("Folder")
+                existing.Name = folderName
+                existing.Parent = currentParent
+            end
+            currentParent = existing
+        end
+        return currentParent
+    end
+    
+    for _, remotePath in ipairs(pathsToPull) do
+        local successContent, content = GitHubAPI.GetFileContent(token, repo, remotePath, currentLoadedBranch)
+        if successContent then
+            local scriptType, cleanSource = Serializer.Deserialize(content)
+            local parts = string.split(remotePath, "/")
+            local fileNameWithExt = parts[#parts]
+            local fileName = fileNameWithExt:gsub("%.lua$", ""):gsub("%.luau$", "")
+            
+            local parentFolder = getOrCreateFolderByPath(parts)
+            local existingScript = parentFolder:FindFirstChild(fileName)
+            
+            if existingScript and (existingScript.ClassName == "Script" or existingScript.ClassName == "LocalScript" or existingScript.ClassName == "ModuleScript") then
+                existingScript.Source = cleanSource
+            else
+                if existingScript then
+                    existingScript:Destroy()
+                end
+                local newScript = Instance.new(scriptType)
+                newScript.Name = fileName
+                newScript.Source = cleanSource
+                newScript.Parent = parentFolder
+            end
+            pulledCount = pulledCount + 1
+        else
+            table.insert(errors, "Failed to download " .. remotePath)
+        end
+    end
+    
+    if #errors > 0 then
+        local errStr = table.concat(errors, ", ")
+        warn("[GitHubSync Error] Pull selected errors: " .. errStr)
+        statusLabel.Text = string.format("Pulled %d file(s) with %d error(s).", pulledCount, #errors)
+    else
+        statusLabel.Text = string.format("Successfully pulled %d selected file(s) into Workspace!", pulledCount)
+        print(string.format("[GitHubSync] Successfully pulled %d selected files into Workspace.", pulledCount))
+    end
+end)
 
 settingsButton.Click:Connect(function()
     settingsWidget.Enabled = not settingsWidget.Enabled
@@ -698,9 +996,10 @@ end)
 pushButton.Click:Connect(function()
     local token = Config.GetToken(pluginInstance)
     local repo = Config.GetRepo(pluginInstance)
+    local branch = Config.GetBranch(pluginInstance)
     
     print("[GitHubSync] Pushing to GitHub...")
-    local success, message = SyncManager.Push(token, repo)
+    local success, message = SyncManager.Push(token, repo, branch ~= "" and branch or nil)
     print("[GitHubSync]", message)
     
     if success then
@@ -716,10 +1015,11 @@ end)
 pullButton.Click:Connect(function()
     local token = Config.GetToken(pluginInstance)
     local repo = Config.GetRepo(pluginInstance)
+    local branch = Config.GetBranch(pluginInstance)
     
     print("[GitHubSync] Pulling from GitHub...")
-    local success, message = SyncManager.Pull(token, repo)
+    local success, message = SyncManager.Pull(token, repo, branch ~= "" and branch or nil)
     print("[GitHubSync]", message)
 end)
 
-print("[GitHubSync] Plugin initialized successfully (Single-File version).")
+print("[GitHubSync] Plugin initialized successfully with Branches & Selective Pull support.")
