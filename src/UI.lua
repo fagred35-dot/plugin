@@ -7,8 +7,8 @@ local UI = {}
 function UI.Init(plugin)
     local toolbar = plugin:CreateToolbar("GitHub Sync")
     
-    local pushButton = toolbar:CreateButton("GitHubPush", "Push scripts to GitHub", "rbxassetid://6023426915", "Push")
-    local pullButton = toolbar:CreateButton("GitHubPull", "Pull scripts from GitHub", "rbxassetid://6023426915", "Pull")
+    -- Push/Pull now live inside the Repository Viewer window, so the Studio
+    -- toolbar only exposes Settings and the viewer itself.
     local settingsButton = toolbar:CreateButton("GitHubSettings", "GitHub Settings", "rbxassetid://6023426915", "Settings")
     local viewerButton = toolbar:CreateButton("GitHubViewer", "Repository Viewer", "rbxassetid://6023426915", "Repo Viewer")
     
@@ -102,14 +102,14 @@ function UI.Init(plugin)
     viewerGui.Parent = viewerWidget
     
     local viewerTopBar = Instance.new("Frame")
-    viewerTopBar.Size = UDim2.new(1, 0, 0, 40)
+    viewerTopBar.Size = UDim2.new(1, 0, 0, 78)
     viewerTopBar.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     viewerTopBar.BorderSizePixel = 0
     viewerTopBar.Parent = viewerGui
     
     local refreshButton = Instance.new("TextButton")
     refreshButton.Size = UDim2.new(0, 120, 0, 30)
-    refreshButton.Position = UDim2.new(0, 10, 0, 5)
+    refreshButton.Position = UDim2.new(0, 10, 0, 6)
     refreshButton.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
     refreshButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     refreshButton.Font = Enum.Font.SourceSansBold
@@ -117,9 +117,30 @@ function UI.Init(plugin)
     refreshButton.Text = "Refresh Viewer"
     refreshButton.Parent = viewerTopBar
     
+    -- Row 2: the actions that used to sit on the Studio toolbar.
+    local pushButton = Instance.new("TextButton")
+    pushButton.Size = UDim2.new(0, 90, 0, 30)
+    pushButton.Position = UDim2.new(0, 10, 0, 42)
+    pushButton.BackgroundColor3 = Color3.fromRGB(0, 140, 90)
+    pushButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    pushButton.Font = Enum.Font.SourceSansBold
+    pushButton.TextSize = 14
+    pushButton.Text = "Push"
+    pushButton.Parent = viewerTopBar
+
+    local pullButton = Instance.new("TextButton")
+    pullButton.Size = UDim2.new(0, 90, 0, 30)
+    pullButton.Position = UDim2.new(0, 110, 0, 42)
+    pullButton.BackgroundColor3 = Color3.fromRGB(200, 130, 40)
+    pullButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    pullButton.Font = Enum.Font.SourceSansBold
+    pullButton.TextSize = 14
+    pullButton.Text = "Pull All"
+    pullButton.Parent = viewerTopBar
+
     local statusLabel = Instance.new("TextLabel")
-    statusLabel.Size = UDim2.new(1, -140, 1, 0)
-    statusLabel.Position = UDim2.new(0, 140, 0, 0)
+    statusLabel.Size = UDim2.new(1, -150, 0, 30)
+    statusLabel.Position = UDim2.new(0, 140, 0, 6)
     statusLabel.BackgroundTransparency = 1
     statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     statusLabel.TextSize = 14
@@ -128,8 +149,8 @@ function UI.Init(plugin)
     statusLabel.Parent = viewerTopBar
     
     local scrollingFrame = Instance.new("ScrollingFrame")
-    scrollingFrame.Size = UDim2.new(1, 0, 1, -40)
-    scrollingFrame.Position = UDim2.new(0, 0, 0, 40)
+    scrollingFrame.Size = UDim2.new(1, 0, 1, -78)
+    scrollingFrame.Position = UDim2.new(0, 0, 0, 78)
     scrollingFrame.BackgroundTransparency = 1
     scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     scrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
@@ -154,8 +175,11 @@ function UI.Init(plugin)
             end
         end
         
-        local successBranch, branchOrErr = GitHubAPI.GetDefaultBranch(token, repo)
-        local branch = successBranch and branchOrErr or "main"
+        local branch = Config.GetBranch(plugin)
+        if branch == "" then
+            local successBranch, branchOrErr = GitHubAPI.GetDefaultBranch(token, repo)
+            branch = successBranch and branchOrErr or "main"
+        end
         
         local successTree, treeData = GitHubAPI.GetRepoTree(token, repo, branch)
         if not successTree or not treeData or not treeData.tree then
@@ -194,33 +218,55 @@ function UI.Init(plugin)
         end
     end)
     
-    pushButton.Click:Connect(function()
+    -- Flashes a viewer button green/red so the in-window buttons give the same
+    -- feedback the old toolbar buttons did via SetActive.
+    local function flashButton(button, baseColor, ok)
+        button.BackgroundColor3 = ok and Color3.fromRGB(40, 180, 80) or Color3.fromRGB(200, 60, 60)
+        task.delay(2, function()
+            button.BackgroundColor3 = baseColor
+        end)
+    end
+    
+    pushButton.MouseButton1Click:Connect(function()
         local token = Config.GetToken(plugin)
         local repo = Config.GetRepo(plugin)
-        
-        print("[GitHubSync] Pushing to GitHub...")
         local branch = Config.GetBranch(plugin)
-        local success, message = SyncManager.Push(token, repo, branch ~= "" and branch or nil)
-        print("[GitHubSync]", message)
         
-        if success then
-            pushButton.SetActive(true)
-            task.delay(2, function()
-                pushButton.SetActive(false)
-            end)
-        else
-            pushButton.SetActive(false)
-        end
+        pushButton.Text = "Pushing..."
+        statusLabel.Text = "Pushing selected scripts to GitHub..."
+        print("[GitHubSync] Pushing to GitHub...")
+        
+        task.spawn(function()
+            local success, message = SyncManager.Push(token, repo, branch ~= "" and branch or nil)
+            print("[GitHubSync]", message)
+            
+            pushButton.Text = "Push"
+            statusLabel.Text = message
+            flashButton(pushButton, Color3.fromRGB(0, 140, 90), success)
+            
+            if success then
+                refreshViewer()
+            end
+        end)
     end)
     
-    pullButton.Click:Connect(function()
+    pullButton.MouseButton1Click:Connect(function()
         local token = Config.GetToken(plugin)
         local repo = Config.GetRepo(plugin)
-        
-        print("[GitHubSync] Pulling from GitHub...")
         local branch = Config.GetBranch(plugin)
-        local success, message = SyncManager.Pull(token, repo, branch ~= "" and branch or nil)
-        print("[GitHubSync]", message)
+        
+        pullButton.Text = "Pulling..."
+        statusLabel.Text = "Pulling from GitHub..."
+        print("[GitHubSync] Pulling from GitHub...")
+        
+        task.spawn(function()
+            local success, message = SyncManager.Pull(token, repo, branch ~= "" and branch or nil)
+            print("[GitHubSync]", message)
+            
+            pullButton.Text = "Pull All"
+            statusLabel.Text = message
+            flashButton(pullButton, Color3.fromRGB(200, 130, 40), success)
+        end)
     end)
 end
 

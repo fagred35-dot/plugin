@@ -648,8 +648,8 @@ end
 -- ============================================================================
 local toolbar = pluginInstance:CreateToolbar("GitHub Sync")
 
-local pushButton = toolbar:CreateButton("GitHubPush", "Push scripts to GitHub", "rbxassetid://6023426915", "Push")
-local pullButton = toolbar:CreateButton("GitHubPull", "Pull scripts from GitHub", "rbxassetid://6023426915", "Pull")
+-- Push/Pull now live inside the Repository Viewer window, so the Studio
+-- toolbar only exposes Settings and the viewer itself.
 local settingsButton = toolbar:CreateButton("GitHubSettings", "GitHub Settings", "rbxassetid://6023426915", "Settings")
 local viewerButton = toolbar:CreateButton("GitHubViewer", "Repository Viewer", "rbxassetid://6023426915", "Repo Viewer")
 
@@ -769,13 +769,13 @@ viewerGui.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 viewerGui.Parent = viewerWidget
 
 local viewerTopBar = Instance.new("Frame")
-viewerTopBar.Size = UDim2.new(1, 0, 0, 50)
+viewerTopBar.Size = UDim2.new(1, 0, 0, 88)
 viewerTopBar.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 viewerTopBar.BorderSizePixel = 0
 viewerTopBar.Parent = viewerGui
 
 local refreshButton = Instance.new("TextButton")
-refreshButton.Size = UDim2.new(0, 90, 0, 34)
+refreshButton.Size = UDim2.new(0, 90, 0, 32)
 refreshButton.Position = UDim2.new(0, 10, 0, 8)
 refreshButton.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
 refreshButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -785,8 +785,8 @@ refreshButton.Text = "Refresh"
 refreshButton.Parent = viewerTopBar
 
 local branchSelectLabel = Instance.new("TextLabel")
-branchSelectLabel.Size = UDim2.new(0, 50, 0, 34)
-branchSelectLabel.Position = UDim2.new(0, 105, 0, 8)
+branchSelectLabel.Size = UDim2.new(0, 52, 0, 32)
+branchSelectLabel.Position = UDim2.new(0, 110, 0, 8)
 branchSelectLabel.BackgroundTransparency = 1
 branchSelectLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
 branchSelectLabel.TextSize = 13
@@ -794,8 +794,9 @@ branchSelectLabel.Text = "Branch:"
 branchSelectLabel.Parent = viewerTopBar
 
 local branchDropdownButton = Instance.new("TextButton")
-branchDropdownButton.Size = UDim2.new(0, 120, 0, 34)
-branchDropdownButton.Position = UDim2.new(0, 155, 0, 8)
+branchDropdownButton.Size = UDim2.new(0, 190, 0, 32)
+branchDropdownButton.Position = UDim2.new(0, 168, 0, 8)
+branchDropdownButton.TextTruncate = Enum.TextTruncate.AtEnd
 branchDropdownButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 branchDropdownButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 branchDropdownButton.Font = Enum.Font.SourceSansBold
@@ -804,8 +805,8 @@ branchDropdownButton.Text = "Select Branch ▼"
 branchDropdownButton.Parent = viewerTopBar
 
 local checkTimeButton = Instance.new("TextButton")
-checkTimeButton.Size = UDim2.new(0, 120, 0, 34)
-checkTimeButton.Position = UDim2.new(0, 280, 0, 8)
+checkTimeButton.Size = UDim2.new(0, 120, 0, 32)
+checkTimeButton.Position = UDim2.new(0, 366, 0, 8)
 checkTimeButton.BackgroundColor3 = Color3.fromRGB(120, 80, 200)
 checkTimeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 checkTimeButton.Font = Enum.Font.SourceSansBold
@@ -813,9 +814,30 @@ checkTimeButton.TextSize = 12
 checkTimeButton.Text = "Check Last Push"
 checkTimeButton.Parent = viewerTopBar
 
+-- Row 2: the actions that used to sit on the Studio toolbar.
+local pushButton = Instance.new("TextButton")
+pushButton.Size = UDim2.new(0, 90, 0, 32)
+pushButton.Position = UDim2.new(0, 10, 0, 46)
+pushButton.BackgroundColor3 = Color3.fromRGB(0, 140, 90)
+pushButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+pushButton.Font = Enum.Font.SourceSansBold
+pushButton.TextSize = 13
+pushButton.Text = "Push"
+pushButton.Parent = viewerTopBar
+
+local pullButton = Instance.new("TextButton")
+pullButton.Size = UDim2.new(0, 90, 0, 32)
+pullButton.Position = UDim2.new(0, 110, 0, 46)
+pullButton.BackgroundColor3 = Color3.fromRGB(200, 130, 40)
+pullButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+pullButton.Font = Enum.Font.SourceSansBold
+pullButton.TextSize = 13
+pullButton.Text = "Pull All"
+pullButton.Parent = viewerTopBar
+
 local pullSelectedButton = Instance.new("TextButton")
-pullSelectedButton.Size = UDim2.new(0, 110, 0, 34)
-pullSelectedButton.Position = UDim2.new(1, -120, 0, 8)
+pullSelectedButton.Size = UDim2.new(0, 120, 0, 32)
+pullSelectedButton.Position = UDim2.new(0, 210, 0, 46)
 pullSelectedButton.BackgroundColor3 = Color3.fromRGB(40, 180, 80)
 pullSelectedButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 pullSelectedButton.Font = Enum.Font.SourceSansBold
@@ -825,7 +847,7 @@ pullSelectedButton.Parent = viewerTopBar
 
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Size = UDim2.new(1, -20, 0, 22)
-statusLabel.Position = UDim2.new(0, 10, 0, 52)
+statusLabel.Position = UDim2.new(0, 10, 0, 92)
 statusLabel.BackgroundTransparency = 1
 statusLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
 statusLabel.TextSize = 12
@@ -835,8 +857,8 @@ statusLabel.Parent = viewerGui
 
 -- Branches popup menu
 local branchesMenu = Instance.new("ScrollingFrame")
-branchesMenu.Size = UDim2.new(0, 150, 0, 150)
-branchesMenu.Position = UDim2.new(0, 155, 0, 45)
+branchesMenu.Size = UDim2.new(0, 190, 0, 150)
+branchesMenu.Position = UDim2.new(0, 168, 0, 40)
 branchesMenu.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 branchesMenu.BorderSizePixel = 1
 branchesMenu.Visible = false
@@ -847,8 +869,8 @@ local branchesLayout = Instance.new("UIListLayout")
 branchesLayout.Parent = branchesMenu
 
 local scrollingFrame = Instance.new("ScrollingFrame")
-scrollingFrame.Size = UDim2.new(1, 0, 1, -78)
-scrollingFrame.Position = UDim2.new(0, 0, 0, 78)
+scrollingFrame.Size = UDim2.new(1, 0, 1, -118)
+scrollingFrame.Position = UDim2.new(0, 0, 0, 118)
 scrollingFrame.BackgroundTransparency = 1
 scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 scrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
@@ -1156,33 +1178,65 @@ viewerButton.Click:Connect(function()
     end
 end)
 
-pushButton.Click:Connect(function()
+-- Flashes a viewer button green/red so the in-window buttons give the same
+-- feedback the old toolbar buttons did via SetActive.
+local function flashButton(button, baseColor, ok)
+    button.BackgroundColor3 = ok and Color3.fromRGB(40, 180, 80) or Color3.fromRGB(200, 60, 60)
+    task.delay(2, function()
+        button.BackgroundColor3 = baseColor
+    end)
+end
+
+-- The viewer always acts on the branch currently loaded in the viewer, falling
+-- back to the saved setting when nothing has been loaded yet.
+local function getActiveBranch()
+    if currentLoadedBranch and currentLoadedBranch ~= "" then
+        return currentLoadedBranch
+    end
+    local saved = Config.GetBranch(pluginInstance)
+    return saved ~= "" and saved or nil
+end
+
+pushButton.MouseButton1Click:Connect(function()
     local token = Config.GetToken(pluginInstance)
     local repo = Config.GetRepo(pluginInstance)
-    local branch = Config.GetBranch(pluginInstance)
+    local branch = getActiveBranch()
     
+    pushButton.Text = "Pushing..."
+    statusLabel.Text = "Pushing selected scripts to GitHub..."
     print("[GitHubSync] Pushing to GitHub...")
-    local success, message = SyncManager.Push(token, repo, branch ~= "" and branch or nil)
-    print("[GitHubSync]", message)
     
-    if success then
-        pushButton.SetActive(true)
-        task.delay(2, function()
-            pushButton.SetActive(false)
-        end)
-    else
-        pushButton.SetActive(false)
-    end
+    task.spawn(function()
+        local success, message = SyncManager.Push(token, repo, branch)
+        print("[GitHubSync]", message)
+        
+        pushButton.Text = "Push"
+        statusLabel.Text = message
+        flashButton(pushButton, Color3.fromRGB(0, 140, 90), success)
+        
+        if success then
+            refreshViewer()
+        end
+    end)
 end)
 
-pullButton.Click:Connect(function()
+pullButton.MouseButton1Click:Connect(function()
     local token = Config.GetToken(pluginInstance)
     local repo = Config.GetRepo(pluginInstance)
-    local branch = Config.GetBranch(pluginInstance)
+    local branch = getActiveBranch()
     
+    pullButton.Text = "Pulling..."
+    statusLabel.Text = "Pulling from GitHub..."
     print("[GitHubSync] Pulling from GitHub...")
-    local success, message = SyncManager.Pull(token, repo, branch ~= "" and branch or nil)
-    print("[GitHubSync]", message)
+    
+    task.spawn(function()
+        local success, message = SyncManager.Pull(token, repo, branch)
+        print("[GitHubSync]", message)
+        
+        pullButton.Text = "Pull All"
+        statusLabel.Text = message
+        flashButton(pullButton, Color3.fromRGB(200, 130, 40), success)
+    end)
 end)
 
 print("[GitHubSync] Plugin initialized successfully with Last Commit time support.")
