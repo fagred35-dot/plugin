@@ -29,7 +29,7 @@ local function getObjectPath(obj)
     return table.concat(parts, "/")
 end
 
-function SyncManager.Push(token, ownerRepo)
+function SyncManager.Push(token, ownerRepo, customBranch)
     if not token or token == "" then
         return false, "GitHub Token is not set."
     end
@@ -42,8 +42,11 @@ function SyncManager.Push(token, ownerRepo)
         return false, "No scripts or objects selected in Roblox Studio. Please select scripts or parent folders (holding Ctrl)."
     end
     
-    local successBranch, branchOrErr = GitHubAPI.GetDefaultBranch(token, ownerRepo)
-    local branch = successBranch and branchOrErr or "main"
+    local branch = customBranch
+    if not branch or branch == "" then
+        local successBranch, branchOrErr = GitHubAPI.GetDefaultBranch(token, ownerRepo)
+        branch = successBranch and branchOrErr or "main"
+    end
     
     local placeName = getPlaceName()
     local pushedCount = 0
@@ -58,7 +61,7 @@ function SyncManager.Push(token, ownerRepo)
                 local remotePath = string.format("%s/%s.lua", placeName, objPath)
                 local msg = string.format("Push %s (%s)", obj.Name, className)
                 
-                local successPut, putErr = GitHubAPI.PutFile(token, ownerRepo, remotePath, fileContent, msg)
+                local successPut, putErr = GitHubAPI.PutFile(token, ownerRepo, remotePath, fileContent, msg, branch)
                 if successPut then
                     pushedCount = pushedCount + 1
                 else
@@ -87,7 +90,7 @@ function SyncManager.Push(token, ownerRepo)
     end
 end
 
-function SyncManager.Pull(token, ownerRepo)
+function SyncManager.Pull(token, ownerRepo, customBranch)
     if not token or token == "" then
         return false, "GitHub Token is not set."
     end
@@ -97,8 +100,11 @@ function SyncManager.Pull(token, ownerRepo)
     
     local selected = Selection:Get()
     
-    local successBranch, branchOrErr = GitHubAPI.GetDefaultBranch(token, ownerRepo)
-    local branch = successBranch and branchOrErr or "main"
+    local branch = customBranch
+    if not branch or branch == "" then
+        local successBranch, branchOrErr = GitHubAPI.GetDefaultBranch(token, ownerRepo)
+        branch = successBranch and branchOrErr or "main"
+    end
     
     local successTree, treeData = GitHubAPI.GetRepoTree(token, ownerRepo, branch)
     if not successTree or not treeData or not treeData.tree then
@@ -116,16 +122,17 @@ function SyncManager.Pull(token, ownerRepo)
                 local objPath = getObjectPath(selObj)
                 local remotePath = string.format("%s/%s.lua", placeName, objPath)
                 
-                local successContent, content = GitHubAPI.GetFileContent(token, ownerRepo, remotePath)
+                local successContent, content = GitHubAPI.GetFileContent(token, ownerRepo, remotePath, branch)
                 if successContent then
                     local _, cleanSource = Serializer.Deserialize(content)
                     selObj.Source = cleanSource
                     updatedCount = updatedCount + 1
                 else
                     local found = false
+                    local escapedName = selObj.Name:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
                     for _, node in ipairs(treeData.tree) do
-                        if node.type == "blob" and (node.path:match("/" + selObj.Name + "%.lua$") or node.path:match("/" + selObj.Name + "%.luau$")) then
-                            local sCont, cnt = GitHubAPI.GetFileContent(token, ownerRepo, node.path)
+                        if node.type == "blob" and (node.path:match("/" .. escapedName .. "%.lua$") or node.path:match("/" .. escapedName .. "%.luau$")) then
+                            local sCont, cnt = GitHubAPI.GetFileContent(token, ownerRepo, node.path, branch)
                             if sCont then
                                 local _, cleanSource = Serializer.Deserialize(cnt)
                                 selObj.Source = cleanSource
@@ -213,7 +220,7 @@ function SyncManager.Pull(token, ownerRepo)
                     
                     local parentFolder = getOrCreateFolder(parts)
                     
-                    local successContent, content = GitHubAPI.GetFileContent(token, ownerRepo, node.path)
+                    local successContent, content = GitHubAPI.GetFileContent(token, ownerRepo, node.path, branch)
                     if successContent then
                         local scriptType, cleanSource = Serializer.Deserialize(content)
                         

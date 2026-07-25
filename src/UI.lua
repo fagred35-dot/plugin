@@ -199,7 +199,8 @@ function UI.Init(plugin)
         local repo = Config.GetRepo(plugin)
         
         print("[GitHubSync] Pushing to GitHub...")
-        local success, message = SyncManager.Push(token, repo)
+        local branch = Config.GetBranch(plugin)
+        local success, message = SyncManager.Push(token, repo, branch ~= "" and branch or nil)
         print("[GitHubSync]", message)
         
         if success then
@@ -217,7 +218,8 @@ function UI.Init(plugin)
         local repo = Config.GetRepo(plugin)
         
         print("[GitHubSync] Pulling from GitHub...")
-        local success, message = SyncManager.Pull(token, repo)
+        local branch = Config.GetBranch(plugin)
+        local success, message = SyncManager.Pull(token, repo, branch ~= "" and branch or nil)
         print("[GitHubSync]", message)
     end)
 end
