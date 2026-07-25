@@ -434,6 +434,7 @@ do
         
         local tokenBox = createInput("GitHub Token (PAT):", Config.GetToken(plugin))
         local repoBox = createInput("Repository (owner/repo):", Config.GetRepo(plugin))
+        local branchBox = createInput("Target Branch (empty = default):", Config.GetBranch(plugin))
         
         local autoSyncBtn = Instance.new("TextButton")
         autoSyncBtn.Size, autoSyncBtn.BackgroundColor3, autoSyncBtn.TextColor3, autoSyncBtn.Parent = UDim2.new(0.9, 0, 0, 30), Config.GetAutoSync(plugin) and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(80, 80, 80), Color3.new(1,1,1), settingsGui
@@ -450,32 +451,71 @@ do
         save.MouseButton1Click:Connect(function()
             Config.SetToken(plugin, tokenBox.Text)
             Config.SetRepo(plugin, repoBox.Text)
+            Config.SetBranch(plugin, branchBox.Text)
             save.Text = "Saved!"
             task.wait(1)
             save.Text = "Save Settings"
         end)
         
-        -- Viewer GUI (simplified)
+        -- Viewer GUI
         local viewerGui = Instance.new("Frame")
         viewerGui.Size, viewerGui.BackgroundColor3, viewerGui.Parent = UDim2.new(1,0,1,0), Color3.fromRGB(40,40,40), viewerWidget
         local top = Instance.new("Frame")
-        top.Size, top.BackgroundColor3, top.BorderSizePixel, top.Parent = UDim2.new(1,0,0,40), Color3.fromRGB(50,50,50), 0, viewerGui
+        top.Size, top.BackgroundColor3, top.BorderSizePixel, top.Parent = UDim2.new(1,0,0,78), Color3.fromRGB(50,50,50), 0, viewerGui
         
         local function createBtn(txt, pos, color)
             local b = Instance.new("TextButton")
-            b.Text, b.Size, b.Position, b.BackgroundColor3, b.TextColor3, b.Parent = txt, UDim2.new(0, 80, 0, 30), pos, color, Color3.new(1,1,1), top
+            b.Text, b.Size, b.Position, b.BackgroundColor3, b.TextColor3, b.Parent = txt, UDim2.new(0, 90, 0, 30), pos, color, Color3.new(1,1,1), top
             return b
         end
         
-        local pushB = createBtn("Push", UDim2.new(0, 10, 0, 5), Color3.fromRGB(0, 140, 90))
-        local pullB = createBtn("Pull All", UDim2.new(0, 100, 0, 5), Color3.fromRGB(200, 130, 40))
+        local refreshB = createBtn("Refresh", UDim2.new(0, 10, 0, 6), Color3.fromRGB(0, 162, 255))
+        local pushB = createBtn("Push", UDim2.new(0, 10, 0, 42), Color3.fromRGB(0, 140, 90))
+        local pullB = createBtn("Pull All", UDim2.new(0, 110, 0, 42), Color3.fromRGB(200, 130, 40))
+        
         local status = Instance.new("TextLabel")
-        status.Size, status.Position, status.BackgroundTransparency, status.TextColor3, status.Text, status.TextXAlignment, status.Parent = UDim2.new(1, -200, 1, 0), UDim2.new(0, 190, 0, 0), 1, Color3.new(0.8,0.8,0.8), "Ready", Enum.TextXAlignment.Left, top
+        status.Size, status.Position, status.BackgroundTransparency, status.TextColor3, status.Text, status.TextXAlignment, status.Parent = UDim2.new(1, -130, 0, 30), UDim2.new(0, 120, 0, 6), 1, Color3.new(0.8,0.8,0.8), "Ready", Enum.TextXAlignment.Left, top
 
+        local scroller = Instance.new("ScrollingFrame")
+        scroller.Size, scroller.Position, scroller.BackgroundTransparency, scroller.CanvasSize, scroller.AutomaticCanvasSize, scroller.Parent = UDim2.new(1, 0, 1, -78), UDim2.new(0, 0, 0, 78), 1, UDim2.new(0, 0, 0, 0), Enum.AutomaticSize.Y, viewerGui
+        local layout = Instance.new("UIListLayout")
+        layout.Padding, layout.Parent = UDim.new(0, 4), scroller
+
+        local function refreshViewer()
+            local token, repo = Config.GetToken(plugin), Config.GetRepo(plugin)
+            if token == "" or repo == "" then status.Text = "Config missing!" return end
+            status.Text = "Fetching tree..."
+            for _, c in ipairs(scroller:GetChildren()) do if c:IsA("TextLabel") then c:Destroy() end end
+            
+            local branch = Config.GetBranch(plugin)
+            if branch == "" then 
+                local ok, def = GitHubAPI.GetDefaultBranch(token, repo)
+                branch = ok and def or "main"
+            end
+            
+            local ok, treeData = GitHubAPI.GetRepoTree(token, repo, branch)
+            if ok and treeData and treeData.tree then
+                local count = 0
+                for _, node in ipairs(treeData.tree) do
+                    if node.type == "blob" then
+                        count = count + 1
+                        local l = Instance.new("TextLabel")
+                        l.Size, l.BackgroundTransparency, l.TextColor3, l.Text, l.TextXAlignment, l.Parent = UDim2.new(1, -20, 0, 20), 1, Color3.new(0.9,0.9,0.9), "  " .. node.path, Enum.TextXAlignment.Left, scroller
+                    end
+                end
+                status.Text = string.format("Loaded %d files (%s)", count, branch)
+            else
+                status.Text = "Fetch failed!"
+            end
+        end
+
+        refreshB.MouseButton1Click:Connect(refreshViewer)
+        
         pushB.MouseButton1Click:Connect(function()
             status.Text = "Pushing..."
             local ok, msg = SyncManager.Push(Config.GetToken(plugin), Config.GetRepo(plugin), Config.GetBranch(plugin))
             status.Text = msg
+            if ok then refreshViewer() end
         end)
         
         pullB.MouseButton1Click:Connect(function()
@@ -485,7 +525,10 @@ do
         end)
         
         settingsButton.Click:Connect(function() settingsWidget.Enabled = not settingsWidget.Enabled end)
-        viewerButton.Click:Connect(function() viewerWidget.Enabled = not viewerWidget.Enabled end)
+        viewerButton.Click:Connect(function() 
+            viewerWidget.Enabled = not viewerWidget.Enabled 
+            if viewerWidget.Enabled then refreshViewer() end
+        end)
     end
 end
 
