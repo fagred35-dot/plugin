@@ -1,0 +1,9 @@
+{
+  "name": "roblox-github-sync-plugin",
+  "tree": {
+    "$className": "Folder",
+    "GitHubSyncPlugin": {
+      "$path": "src"
+    }
+  }
+}
