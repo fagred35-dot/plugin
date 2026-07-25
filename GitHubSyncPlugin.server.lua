@@ -807,25 +807,39 @@ local function refreshViewer()
         return
     end
     
-    -- Pick default or saved branch
+    -- Determine which branch to load:
+    -- Priority 1: User's explicitly selected branch in viewer (currentLoadedBranch if valid)
+    -- Priority 2: Saved branch in Settings (Config.GetBranch)
+    -- Priority 3: Default branch from GitHub
     local savedBranch = Config.GetBranch(pluginInstance)
-    local foundSaved = false
-    if savedBranch ~= "" then
-        for _, bName in ipairs(branchesList) do
-            if bName == savedBranch then
-                foundSaved = true
-                break
+    local branchToUse = currentLoadedBranch
+    
+    local isValidBranch = false
+    for _, bName in ipairs(branchesList) do
+        if bName == branchToUse then
+            isValidBranch = true
+            break
+        end
+    end
+    
+    if not isValidBranch then
+        if savedBranch ~= "" then
+            for _, bName in ipairs(branchesList) do
+                if bName == savedBranch then
+                    branchToUse = savedBranch
+                    isValidBranch = true
+                    break
+                end
             end
         end
     end
     
-    if not foundSaved then
+    if not isValidBranch then
         local okDef, defBranch = GitHubAPI.GetDefaultBranch(token, repo)
-        currentLoadedBranch = okDef and defBranch or branchesList[1]
-    else
-        currentLoadedBranch = savedBranch
+        branchToUse = okDef and defBranch or branchesList[1]
     end
     
+    currentLoadedBranch = branchToUse
     branchDropdownButton.Text = currentLoadedBranch .. " ▼"
     
     -- Populate branches popup
@@ -838,7 +852,7 @@ local function refreshViewer()
     for _, bName in ipairs(branchesList) do
         local bBtn = Instance.new("TextButton")
         bBtn.Size = UDim2.new(1, 0, 0, 28)
-        bBtn.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+        bBtn.BackgroundColor3 = (bName == currentLoadedBranch) and Color3.fromRGB(0, 120, 200) or Color3.fromRGB(55, 55, 55)
         bBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         bBtn.TextSize = 13
         bBtn.Text = " " .. bName
@@ -850,6 +864,9 @@ local function refreshViewer()
             currentLoadedBranch = bName
             branchDropdownButton.Text = bName .. " ▼"
             branchesMenu.Visible = false
+            -- Automatically save chosen branch to settings/config so it persists
+            Config.SetBranch(pluginInstance, bName)
+            branchBox.Text = bName
             refreshViewer()
         end)
     end
@@ -962,14 +979,13 @@ checkTimeButton.MouseButton1Click:Connect(function()
             tLabel.Text = "Loading..."
             local success, commitInfo = GitHubAPI.GetFileCommitInfo(token, repo, path, currentLoadedBranch)
             if success and commitInfo and commitInfo.date then
-                -- Format date string (e.g. 2026-07-25T14:30:00Z -> 2026-07-25 14:30:00)
                 local cleanDate = commitInfo.date:gsub("T", " "):gsub("Z", "")
                 tLabel.Text = cleanDate
             else
                 tLabel.Text = "No commit info"
             end
             checked = checked + 1
-            task.wait(0.05) -- slight throttle for GitHub API rate limit
+            task.wait(0.05)
         end
         statusLabel.Text = string.format("Branch: [%s] | Checked last push time for %d file(s).", currentLoadedBranch, checked)
         print(string.format("[GitHubSync] Fetched last commit push times for %d files.", checked))
