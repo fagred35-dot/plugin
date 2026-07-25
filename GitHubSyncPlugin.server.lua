@@ -1,5 +1,5 @@
 -- ============================================================================
--- Roblox GitHub Sync Plugin (All-in-One Single File Version with Branches & Selective Pull)
+-- Roblox GitHub Sync Plugin (All-in-One Single File Version with Last Commit Info)
 -- Copy this entire script into a Script or ModuleScript in Roblox Studio
 -- ============================================================================
 
@@ -214,7 +214,6 @@ function GitHubAPI.GetBranches(token, ownerRepo)
         end
     end
     if #branches == 0 then
-        -- fallback to default branch
         local ok, def = GitHubAPI.GetDefaultBranch(token, ownerRepo)
         if ok then
             table.insert(branches, def)
@@ -228,6 +227,25 @@ end
 function GitHubAPI.GetRepoTree(token, ownerRepo, branch)
     local url = string.format("https://api.github.com/repos/%s/git/trees/%s?recursive=1", ownerRepo, branch)
     return GitHubAPI.MakeRequest(token, url, "GET")
+end
+
+function GitHubAPI.GetFileCommitInfo(token, ownerRepo, path, branch)
+    local url = string.format("https://api.github.com/repos/%s/commits?path=%s&sha=%s&per_page=1", ownerRepo, path, branch or "main")
+    local success, data = GitHubAPI.MakeRequest(token, url, "GET")
+    if success and type(data) == "table" and #data > 0 then
+        local commitObj = data[1]
+        if commitObj and commitObj.commit then
+            local authorDate = commitObj.commit.author and commitObj.commit.author.date or ""
+            local message = commitObj.commit.message or ""
+            local authorName = commitObj.commit.author and commitObj.commit.author.name or ""
+            return true, {
+                date = authorDate,
+                message = message,
+                author = authorName
+            }
+        end
+    end
+    return false, nil
 end
 
 function GitHubAPI.GetFileSha(token, ownerRepo, path, branch)
@@ -573,11 +591,11 @@ local viewerWidgetInfo = DockWidgetPluginGuiInfo.new(
     Enum.InitialDockState.Float,
     false,
     false,
-    550, 450,
-    400, 300
+    700, 450,
+    500, 300
 )
 local viewerWidget = pluginInstance:CreateDockWidgetPluginGui("GitHubSyncViewer", viewerWidgetInfo)
-viewerWidget.Title = "GitHub Repository Viewer & Selective Pull"
+viewerWidget.Title = "GitHub Repository Viewer & Last Pushed Info"
 
 -- Settings GUI
 local settingsGui = Instance.new("ScrollingFrame")
@@ -681,7 +699,7 @@ viewerTopBar.BorderSizePixel = 0
 viewerTopBar.Parent = viewerGui
 
 local refreshButton = Instance.new("TextButton")
-refreshButton.Size = UDim2.new(0, 100, 0, 34)
+refreshButton.Size = UDim2.new(0, 90, 0, 34)
 refreshButton.Position = UDim2.new(0, 10, 0, 8)
 refreshButton.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
 refreshButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -692,7 +710,7 @@ refreshButton.Parent = viewerTopBar
 
 local branchSelectLabel = Instance.new("TextLabel")
 branchSelectLabel.Size = UDim2.new(0, 50, 0, 34)
-branchSelectLabel.Position = UDim2.new(0, 120, 0, 8)
+branchSelectLabel.Position = UDim2.new(0, 105, 0, 8)
 branchSelectLabel.BackgroundTransparency = 1
 branchSelectLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
 branchSelectLabel.TextSize = 13
@@ -700,8 +718,8 @@ branchSelectLabel.Text = "Branch:"
 branchSelectLabel.Parent = viewerTopBar
 
 local branchDropdownButton = Instance.new("TextButton")
-branchDropdownButton.Size = UDim2.new(0, 130, 0, 34)
-branchDropdownButton.Position = UDim2.new(0, 175, 0, 8)
+branchDropdownButton.Size = UDim2.new(0, 120, 0, 34)
+branchDropdownButton.Position = UDim2.new(0, 155, 0, 8)
 branchDropdownButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 branchDropdownButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 branchDropdownButton.Font = Enum.Font.SourceSansBold
@@ -709,9 +727,19 @@ branchDropdownButton.TextSize = 13
 branchDropdownButton.Text = "Select Branch ▼"
 branchDropdownButton.Parent = viewerTopBar
 
+local checkTimeButton = Instance.new("TextButton")
+checkTimeButton.Size = UDim2.new(0, 120, 0, 34)
+checkTimeButton.Position = UDim2.new(0, 280, 0, 8)
+checkTimeButton.BackgroundColor3 = Color3.fromRGB(120, 80, 200)
+checkTimeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+checkTimeButton.Font = Enum.Font.SourceSansBold
+checkTimeButton.TextSize = 12
+checkTimeButton.Text = "Check Last Push"
+checkTimeButton.Parent = viewerTopBar
+
 local pullSelectedButton = Instance.new("TextButton")
-pullSelectedButton.Size = UDim2.new(0, 120, 0, 34)
-pullSelectedButton.Position = UDim2.new(1, -130, 0, 8)
+pullSelectedButton.Size = UDim2.new(0, 110, 0, 34)
+pullSelectedButton.Position = UDim2.new(1, -120, 0, 8)
 pullSelectedButton.BackgroundColor3 = Color3.fromRGB(40, 180, 80)
 pullSelectedButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 pullSelectedButton.Font = Enum.Font.SourceSansBold
@@ -731,8 +759,8 @@ statusLabel.Parent = viewerGui
 
 -- Branches popup menu
 local branchesMenu = Instance.new("ScrollingFrame")
-branchesMenu.Size = UDim2.new(0, 160, 0, 150)
-branchesMenu.Position = UDim2.new(0, 175, 0, 45)
+branchesMenu.Size = UDim2.new(0, 150, 0, 150)
+branchesMenu.Position = UDim2.new(0, 155, 0, 45)
 branchesMenu.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 branchesMenu.BorderSizePixel = 1
 branchesMenu.Visible = false
@@ -757,6 +785,7 @@ scrollerLayout.Parent = scrollingFrame
 local currentLoadedBranch = "main"
 local repoFilesData = {}
 local selectedFilesMap = {}
+local fileLabelsMap = {}
 
 local function refreshViewer()
     local token = Config.GetToken(pluginInstance)
@@ -833,6 +862,7 @@ local function refreshViewer()
     end
     repoFilesData = {}
     selectedFilesMap = {}
+    fileLabelsMap = {}
     
     local successTree, treeData = GitHubAPI.GetRepoTree(token, repo, currentLoadedBranch)
     if not successTree or not treeData or not treeData.tree then
@@ -864,7 +894,7 @@ local function refreshViewer()
             chkBtn.Parent = itemFrame
             
             local pathLabel = Instance.new("TextLabel")
-            pathLabel.Size = UDim2.new(1, -35, 1, 0)
+            pathLabel.Size = UDim2.new(0.65, -35, 1, 0)
             pathLabel.Position = UDim2.new(0, 30, 0, 0)
             pathLabel.BackgroundTransparency = 1
             pathLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
@@ -872,6 +902,18 @@ local function refreshViewer()
             pathLabel.TextXAlignment = Enum.TextXAlignment.Left
             pathLabel.Text = node.path
             pathLabel.Parent = itemFrame
+            
+            local timeLabel = Instance.new("TextLabel")
+            timeLabel.Size = UDim2.new(0.35, 0, 1, 0)
+            timeLabel.Position = UDim2.new(0.65, 0, 0, 0)
+            timeLabel.BackgroundTransparency = 1
+            timeLabel.TextColor3 = Color3.fromRGB(150, 180, 220)
+            timeLabel.TextSize = 12
+            timeLabel.TextXAlignment = Enum.TextXAlignment.Right
+            timeLabel.Text = "Last push: (Click 'Check Last Push')"
+            timeLabel.Parent = itemFrame
+            
+            fileLabelsMap[node.path] = timeLabel
             
             local isSelected = false
             chkBtn.MouseButton1Click:Connect(function()
@@ -892,7 +934,7 @@ local function refreshViewer()
         end
     end
     
-    statusLabel.Text = string.format("Branch: [%s] | Loaded %d file(s). Select files to pull.", currentLoadedBranch, count)
+    statusLabel.Text = string.format("Branch: [%s] | Loaded %d file(s). Click 'Check Last Push' to view push dates.", currentLoadedBranch, count)
     print(string.format("[GitHubSync] Loaded branch '%s' with %d files.", currentLoadedBranch, count))
 end
 
@@ -903,6 +945,35 @@ end)
 refreshButton.MouseButton1Click:Connect(function()
     branchesMenu.Visible = false
     refreshViewer()
+end)
+
+checkTimeButton.MouseButton1Click:Connect(function()
+    local token = Config.GetToken(pluginInstance)
+    local repo = Config.GetRepo(pluginInstance)
+    if token == "" or repo == "" then
+        statusLabel.Text = "Error: Token or Repository not configured."
+        return
+    end
+    
+    statusLabel.Text = "Fetching last commit times for files..."
+    task.spawn(function()
+        local checked = 0
+        for path, tLabel in pairs(fileLabelsMap) do
+            tLabel.Text = "Loading..."
+            local success, commitInfo = GitHubAPI.GetFileCommitInfo(token, repo, path, currentLoadedBranch)
+            if success and commitInfo and commitInfo.date then
+                -- Format date string (e.g. 2026-07-25T14:30:00Z -> 2026-07-25 14:30:00)
+                local cleanDate = commitInfo.date:gsub("T", " "):gsub("Z", "")
+                tLabel.Text = cleanDate
+            else
+                tLabel.Text = "No commit info"
+            end
+            checked = checked + 1
+            task.wait(0.05) -- slight throttle for GitHub API rate limit
+        end
+        statusLabel.Text = string.format("Branch: [%s] | Checked last push time for %d file(s).", currentLoadedBranch, checked)
+        print(string.format("[GitHubSync] Fetched last commit push times for %d files.", checked))
+    end)
 end)
 
 pullSelectedButton.MouseButton1Click:Connect(function()
@@ -1022,4 +1093,4 @@ pullButton.Click:Connect(function()
     print("[GitHubSync]", message)
 end)
 
-print("[GitHubSync] Plugin initialized successfully with Branches & Selective Pull support.")
+print("[GitHubSync] Plugin initialized successfully with Last Commit time support.")
